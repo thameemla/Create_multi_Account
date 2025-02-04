@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Array of usernames and passwords
+USERNAMES=("user1" "user2" "user3" "user4" "user5" "user6" "user7" "user8" "user9")
+PASSWORDS=("password1" "password2" "password3" "password4" "password5" "password6" "password7" "password8" "password9")
+FULL_NAMES=("Learner 1" "Learner 2" "Learner 3" "Learner 4" "Learner 5" "Learner 6" "Learner 7" "Learner 8" "Learner 9")
+
+# Check if script is run as root
+if [ "$(id -u)" -ne 0 ]; then
+  echo "This script must be run as root" >&2
+  exit 1
+fi
+
+for i in "${!USERNAMES[@]}"; do
+  USERNAME="${USERNAMES[$i]}"
+  PASSWORD="${PASSWORDS[$i]}"
+  FULL_NAME="${FULL_NAMES[$i]}"
+
+  # Check if the user already exists with incorrect real name
+  if id "${USERNAME}" &>/dev/null && [[ $(dscl . -read /Users/"${USERNAME}" RealName | grep "${FULL_NAME}") == *"RealName"* ]]; then
+    echo "Deleting user ${USERNAME} with incorrect real name"
+    sudo dscl . -delete "/Users/${USERNAME}"
+  fi
+
+  # Check if the user already exists
+  if id "${USERNAME}" &>/dev/null; then
+    echo "User ${USERNAME} already exists" >&2
+    continue
+  fi
+
+  # Create the user
+  sudo dscl . -create /Users/"${USERNAME}"
+  sudo dscl . -create /Users/"${USERNAME}" UserShell /bin/bash
+  sudo dscl . -create /Users/"${USERNAME}" RealName "${FULL_NAME}"
+  sudo dscl . -create /Users/"${USERNAME}" UniqueID "$(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1 | awk '{print $1+1}')"
+  sudo dscl . -create /Users/"${USERNAME}" PrimaryGroupID 20
+  sudo dscl . -create /Users/"${USERNAME}" NFSHomeDirectory /Users/"${USERNAME}"
+  sudo dscl . -passwd /Users/"${USERNAME}" "${PASSWORD}"
+  sudo dscl . -append /Groups/staff GroupMembership "${USERNAME}"
+
+  # Create the home directory and set appropriate permissions
+  sudo cp -R /System/Library/User\ Template/English.lproj /Users/"${USERNAME}"
+  sudo chown -R "${USERNAME}":staff /Users/"${USERNAME}"
+
+  echo "User ${USERNAME} (${FULL_NAME}) has been created and password has been set."
+done
+
+exit 0
